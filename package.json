@@ -10,6 +10,7 @@
     "plugin:build": "pnpm --filter @kimjansheden/payload-video-processor build",
     "plugin:test": "pnpm --filter @kimjansheden/payload-video-processor test",
     "plugin:typecheck": "pnpm --filter @kimjansheden/payload-video-processor typecheck",
+    "plugin:publish": "pnpm --filter @kimjansheden/payload-video-processor build && HUSKY=0 npm --prefix packages/video-plugin publish --access public",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
