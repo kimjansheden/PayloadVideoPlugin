@@ -156,3 +156,9 @@ payload-video-worker \
 The CLI sets common fallbacks (`STATIC_DIR`, `PAYLOAD_CONFIG_PATH`,
 `MONGODB_URI` ← `DATABASE_URI`, default `PAYLOAD_SECRET`) before invoking
 `createWorker`. It shuts down gracefully on `SIGINT`/`SIGTERM`.
+
+## Contributing
+
+Contributions are welcome. Please open an issue or PR with a clear description
+of the change and how to test it. If you add features, include a short README
+note so onboarding stays accurate.
