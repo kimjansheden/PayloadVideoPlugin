@@ -31,6 +31,12 @@ export type VariantRecord = {
   createdAt: string;
 };
 
+export type PlaybackSource = {
+  src: string;
+  type?: string;
+  preset?: string;
+};
+
 export type QueueConfig = {
   name?: string;
   redisUrl?: string;

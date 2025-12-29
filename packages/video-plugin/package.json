@@ -52,7 +52,8 @@
     "dev": "pnpm exec tsup --watch",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "worker": "node ./dist/queue/worker.js"
   },
   "peerDependencies": {

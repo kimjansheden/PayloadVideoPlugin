@@ -13,12 +13,14 @@ import { createEnqueueHandler } from "./api/enqueue";
 import { createStatusHandler } from "./api/status";
 import { createRemoveVariantHandler } from "./api/removeVariant";
 import { createReplaceOriginalHandler } from "./api/replaceOriginal";
+import { buildPlaybackPosterUrl, buildPlaybackSources } from "./utils/playback";
 export { createWorker } from "./queue/createWorker";
 export { defaultResolvePaths } from "./utils/paths";
 export type {
   Preset,
   VideoPluginOptions,
   VariantRecord,
+  PlaybackSource,
   PayloadPluginFactory,
   PayloadConfig,
 } from "./types";
@@ -206,9 +208,52 @@ const pluginFactory = (
           fields.push(controlField);
         }
 
+        const existingHooks = collection.hooks ?? {};
+        const existingAfterRead = Array.isArray(existingHooks.afterRead)
+          ? existingHooks.afterRead
+          : [];
+
+        const hooks = {
+          ...existingHooks,
+          afterRead: [
+            ...existingAfterRead,
+            ({ doc, req }: { doc: unknown; req?: unknown }) => {
+              if (!doc || typeof doc !== "object") {
+                return doc;
+              }
+
+              const mimeType =
+                typeof (doc as any).mimeType === "string"
+                  ? (doc as any).mimeType
+                  : "";
+
+              if (!mimeType.startsWith("video/")) {
+                return doc;
+              }
+
+              (doc as any).playbackSources = buildPlaybackSources({
+                doc: doc as Record<string, unknown>,
+                req: req as any,
+              });
+
+              const posterUrl = buildPlaybackPosterUrl({
+                doc: doc as Record<string, unknown>,
+                req: req as any,
+              });
+
+              if (posterUrl) {
+                (doc as any).playbackPosterUrl = posterUrl;
+              }
+
+              return doc;
+            },
+          ],
+        } satisfies CollectionConfig["hooks"];
+
         return {
           ...collection,
           fields,
+          hooks,
         } satisfies CollectionConfig;
       },
     );
