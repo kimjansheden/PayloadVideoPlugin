@@ -1,0 +1,24 @@
+{
+  "name": "example-payload",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "tsc --noEmit",
+    "lint": "echo 'no lint configured'",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests'",
+    "worker": "tsx worker.ts"
+  },
+  "dependencies": {
+    "@kimjansheden/payload-video-processor": "workspace:*",
+    "@payloadcms/db-mongodb": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "payload": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.1",
+    "typescript": "^5.8.3"
+  }
+}

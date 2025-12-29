@@ -1,0 +1,26 @@
+{
+  "name": "payload-video-plugin-monorepo",
+  "private": true,
+  "version": "0.1.1",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter example-payload dev",
+    "worker": "pnpm --filter example-payload worker",
+    "plugin:dev": "pnpm --filter @kimjansheden/payload-video-processor dev",
+    "plugin:build": "pnpm --filter @kimjansheden/payload-video-processor build",
+    "plugin:test": "pnpm --filter @kimjansheden/payload-video-processor test",
+    "plugin:typecheck": "pnpm --filter @kimjansheden/payload-video-processor typecheck",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "format:staged": "node ./scripts/prettier-staged.mjs",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "prettier": "^3.7.4"
+  }
+}
