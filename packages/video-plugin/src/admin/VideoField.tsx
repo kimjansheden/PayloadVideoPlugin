@@ -142,7 +142,7 @@ const formatSeconds = (value?: number): string => {
 };
 
 const VideoField: FC<FieldProps> = (props) => {
-  const { useEffect, useMemo, useState, useCallback } = React;
+  const { useEffect, useMemo, useState, useCallback, useRef } = React;
   const { field } = props;
   const { id } = useDocumentInfo();
   const custom =
@@ -185,6 +185,7 @@ const VideoField: FC<FieldProps> = (props) => {
   } | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [expectedPreset, setExpectedPreset] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantRecord[]>([]);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [replaceLoading, setReplaceLoading] = useState<string | null>(null);
@@ -192,6 +193,16 @@ const VideoField: FC<FieldProps> = (props) => {
   const [cropState, setCropState] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [cropSelection, setCropSelection] = useState(DEFAULT_CROP);
+  const expectedPresetRef = useRef<string | null>(null);
+  const sleep = useCallback(
+    (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    [],
+  );
+
+  useEffect(() => {
+    expectedPresetRef.current = expectedPreset;
+  }, [expectedPreset]);
+
   const messageClassName =
     message?.type === "error"
       ? "bg-rose-50 text-rose-700"
@@ -216,6 +227,7 @@ const VideoField: FC<FieldProps> = (props) => {
       const response = await fetch(custom.enqueuePath, {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
         },
@@ -258,6 +270,7 @@ const VideoField: FC<FieldProps> = (props) => {
       const response = await fetch(custom.removeVariantPath, {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
         },
@@ -291,6 +304,7 @@ const VideoField: FC<FieldProps> = (props) => {
       const response = await fetch(custom.replaceOriginalPath, {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
         headers: {
           "Content-Type": "application/json",
         },
@@ -480,63 +494,60 @@ const VideoField: FC<FieldProps> = (props) => {
     }
   }, [presetNames, selectedPreset]);
 
-  useEffect(() => {
+  const fetchDocument = useCallback(async () => {
     if (!docId || !custom) {
       setDocData(null);
       setVariants([]);
-      setMessage(null);
-      return;
+      return null;
     }
 
-    let cancelled = false;
-    const fetchDocument = async () => {
-      try {
-        setLoadingDoc(true);
-        setError(null);
-        setMessage(null);
-        const response = await fetch(
-          `${apiBase}/${custom.collectionSlug}/${docId}`,
-          {
-            credentials: "include",
-          },
-        );
-        if (!response.ok) {
-          throw new Error(`Failed to load document (${response.status})`);
-        }
-        const payload = await response.json();
-        if (!cancelled) {
-          const nextDoc = (payload as any).doc ?? payload;
-          setDocData(nextDoc);
-          const docVariants = Array.isArray(nextDoc?.variants)
-            ? (nextDoc.variants as VariantRecord[])
-            : [];
-          setVariants(docVariants);
-        }
-      } catch (fetchError) {
-        if (!cancelled) {
-          setError(
-            fetchError instanceof Error
-              ? fetchError.message
-              : "Failed to load document data.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingDoc(false);
-        }
-      }
-    };
+    try {
+      setLoadingDoc(true);
+      setError(null);
 
+      const response = await fetch(
+        `${apiBase}/${custom.collectionSlug}/${docId}?t=${Date.now()}`,
+        {
+          credentials: "include",
+          cache: "no-store",
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to load document (${response.status})`);
+      }
+
+      const payload = await response.json();
+      const nextDoc = (payload as any).doc ?? payload;
+      setDocData(nextDoc);
+
+      const docVariants = Array.isArray(nextDoc?.variants)
+        ? (nextDoc.variants as VariantRecord[])
+        : [];
+      setVariants(docVariants);
+
+      return { doc: nextDoc as any, variants: docVariants };
+    } catch (fetchError) {
+      setError(
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Failed to load document data.",
+      );
+      return null;
+    } finally {
+      setLoadingDoc(false);
+    }
+  }, [apiBase, custom, docId]);
+
+  useEffect(() => {
     void fetchDocument();
-    return () => {
-      cancelled = true;
-    };
-  }, [apiBase, custom, docId, jobStatus?.state]);
+  }, [fetchDocument, jobStatus?.state]);
 
   const enqueue = useCallback(async () => {
     if (!custom || !docId || !selectedPreset) return;
     try {
       setError(null);
+      setMessage(null);
+      setExpectedPreset(selectedPreset);
       const allowCrop = Boolean(presets[selectedPreset]?.enableCrop);
       const data = await sendEnqueueRequest({
         documentId: docId,
@@ -564,16 +575,61 @@ const VideoField: FC<FieldProps> = (props) => {
   useEffect(() => {
     if (!pollingJobId || !custom) return;
     let active = true;
+
+    const refreshAfterCompletion = async (jobId: string) => {
+      const presetToWaitFor = expectedPresetRef.current;
+      if (!presetToWaitFor) {
+        await fetchDocument();
+        return;
+      }
+
+      const maxAttempts = 5;
+      for (let attempt = 0; attempt < maxAttempts && active; attempt += 1) {
+        const result = await fetchDocument();
+        const hasVariant = Boolean(
+          result?.variants?.some(
+            (variant) => readVariantPreset(variant) === presetToWaitFor,
+          ),
+        );
+        if (hasVariant) {
+          setExpectedPreset(null);
+          setJobStatus({ id: jobId, state: "completed", progress: 100 });
+          setMessage({
+            type: "success",
+            text: `Variant \"${presetToWaitFor}\" saved.`,
+          });
+          return;
+        }
+        await sleep(1000);
+      }
+
+      if (active) {
+        setMessage({
+          type: "info",
+          text: `Job ${jobId} finished, but the new variant isn’t visible yet. Try refreshing the page.`,
+        });
+      }
+    };
+
     const interval = window.setInterval(async () => {
       try {
-        const response = await fetch(`${custom.statusPath}/${pollingJobId}`, {
-          credentials: "include",
-        });
+        const response = await fetch(
+          `${custom.statusPath}/${pollingJobId}?t=${Date.now()}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          },
+        );
         if (!response.ok) {
           if (response.status === 404) {
             if (active) {
-              setJobStatus(null);
+              setJobStatus({ id: pollingJobId, state: "unknown" });
               setPollingJobId(null);
+              setMessage({
+                type: "info",
+                text: `Job ${pollingJobId} status is no longer available. Refreshing variants…`,
+              });
+              void refreshAfterCompletion(pollingJobId);
             }
             return;
           }
@@ -584,6 +640,7 @@ const VideoField: FC<FieldProps> = (props) => {
           setJobStatus(payload);
           if (payload.state === "completed" || payload.state === "failed") {
             setPollingJobId(null);
+            void refreshAfterCompletion(String(payload.id));
           }
         }
       } catch (statusError) {
@@ -602,7 +659,7 @@ const VideoField: FC<FieldProps> = (props) => {
       active = false;
       window.clearInterval(interval);
     };
-  }, [custom, pollingJobId]);
+  }, [custom, fetchDocument, pollingJobId, sleep]);
 
   const preset = selectedPreset ? presets[selectedPreset] : undefined;
   const cropEnabled = Boolean(preset?.enableCrop);
@@ -776,7 +833,7 @@ const VideoField: FC<FieldProps> = (props) => {
             </select>
           </label>
           <button
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:bg-slate-400"
             type="button"
             disabled={!docId || !selectedPreset}
             onClick={enqueue}
@@ -905,7 +962,7 @@ const VideoField: FC<FieldProps> = (props) => {
                         </button>
                       ) : null}
                       <button
-                        className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+                        className="rounded-lg bg-slate-900 px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:bg-slate-400"
                         type="button"
                         onClick={() =>
                           void handleReplaceOriginalVariant(variant)

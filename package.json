@@ -1,7 +1,7 @@
 {
   "name": "payload-video-plugin-monorepo",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter example-payload dev",
@@ -10,7 +10,7 @@
     "plugin:build": "pnpm --filter @kimjansheden/payload-video-processor build",
     "plugin:test": "pnpm --filter @kimjansheden/payload-video-processor test",
     "plugin:typecheck": "pnpm --filter @kimjansheden/payload-video-processor typecheck",
-    "plugin:publish": "pnpm --filter @kimjansheden/payload-video-processor build && HUSKY=0 npm --prefix packages/video-plugin publish --access public",
+    "plugin:publish": "pnpm --filter @kimjansheden/payload-video-processor build && HUSKY=0 npm publish ./packages/video-plugin --access public --ignore-scripts",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
