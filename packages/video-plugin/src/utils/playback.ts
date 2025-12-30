@@ -154,6 +154,22 @@ const normaliseVideoSourceType = (
   return inferVideoMimeTypeFromUrl(resolvedUrl);
 };
 
+const isPlaceholderPoster = (value: unknown): boolean => {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return trimmed.endsWith("video-placeholder.svg");
+};
+
+const isValidPosterCandidate = (value: unknown): value is string =>
+  typeof value === "string" && value.trim() && !isPlaceholderPoster(value);
+
 const getThumbnailCandidate = (doc: Record<string, unknown>): unknown => {
   const sizes = doc.sizes as Record<string, unknown> | undefined;
   if (sizes && typeof sizes === "object") {
@@ -161,13 +177,13 @@ const getThumbnailCandidate = (doc: Record<string, unknown>): unknown => {
     for (const key of sizeCandidates) {
       const entry = sizes[key] as Record<string, unknown> | undefined;
       const url = entry?.url;
-      if (typeof url === "string" && url.trim()) {
+      if (isValidPosterCandidate(url)) {
         return url;
       }
     }
   }
 
-  if (typeof doc.thumbnailURL === "string" && doc.thumbnailURL.trim()) {
+  if (isValidPosterCandidate(doc.thumbnailURL)) {
     return doc.thumbnailURL;
   }
 
@@ -229,10 +245,9 @@ export const buildPlaybackPosterUrl = ({
   const docUrl = typeof doc.url === "string" ? doc.url.trim() : "";
   const requestOrigin = getRequestOrigin(req);
   const bases = [docUrl, requestOrigin].filter(Boolean);
-  const storedPoster =
-    typeof doc.playbackPosterUrl === "string"
-      ? doc.playbackPosterUrl.trim()
-      : "";
+  const storedPoster = isValidPosterCandidate(doc.playbackPosterUrl)
+    ? doc.playbackPosterUrl.trim()
+    : "";
   const candidate = storedPoster || getThumbnailCandidate(doc);
   const resolved = resolvePlaybackUrl(candidate, bases);
   return resolved || undefined;

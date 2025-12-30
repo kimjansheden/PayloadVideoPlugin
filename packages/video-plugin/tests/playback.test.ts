@@ -66,6 +66,40 @@ describe("playback helpers", () => {
     );
   });
 
+  it("ignores placeholder posters when building playbackPosterUrl", () => {
+    const posterUrl = buildPlaybackPosterUrl({
+      doc: {
+        url: "/api/media/file/example.mov",
+        mimeType: "video/quicktime",
+        thumbnailURL: "/video-placeholder.svg",
+        playbackPosterUrl: "/video-placeholder.svg",
+      },
+      req: {
+        payload: { config: { serverURL: "https://example.com" } },
+      } as PayloadRequest,
+    });
+
+    expect(posterUrl).toBeUndefined();
+  });
+
+  it("falls back to thumbnailURL when stored poster is placeholder", () => {
+    const posterUrl = buildPlaybackPosterUrl({
+      doc: {
+        url: "/api/media/file/example.mov",
+        mimeType: "video/quicktime",
+        thumbnailURL: "/api/media/file/example-thumb.jpg",
+        playbackPosterUrl: "/video-placeholder.svg",
+      },
+      req: {
+        payload: { config: { serverURL: "https://example.com" } },
+      } as PayloadRequest,
+    });
+
+    expect(posterUrl).toBe(
+      "https://example.com/api/media/file/example-thumb.jpg",
+    );
+  });
+
   it("resolves relative doc.url via serverURL when needed", () => {
     const sources = buildPlaybackSources({
       doc: {
