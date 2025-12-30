@@ -3,6 +3,8 @@ import type {
   CollectionAfterChangeHook,
   CollectionAfterReadHook,
 } from "payload";
+import fs from "node:fs";
+import path from "node:path";
 import type {
   VideoPluginOptions,
   Preset,
@@ -38,6 +40,73 @@ const adminFieldPath =
   "@kimjansheden/payload-video-processor/client#VideoField";
 
 type VideoDoc = Record<string, unknown> & { id: number | string };
+
+const buildInlinePlaceholderPoster = (): string => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Video"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#111827"/><stop offset="1" stop-color="#1f2937"/></linearGradient></defs><rect width="640" height="360" rx="24" fill="url(#g)"/><rect x="28" y="28" width="584" height="304" rx="18" fill="#0b1220" opacity="0.55"/><circle cx="320" cy="180" r="64" fill="#ffffff" opacity="0.1"/><path d="M302 140 L302 220 L370 180 Z" fill="#ffffff" opacity="0.75"/><text x="320" y="320" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-size="18" fill="#cbd5e1" opacity="0.9">Video</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+};
+
+const inferPosterFilename = (doc: Record<string, unknown>): string | null => {
+  const filename =
+    typeof doc.filename === "string" && doc.filename.trim().length > 0
+      ? doc.filename.trim()
+      : typeof doc.path === "string" && doc.path.trim().length > 0
+        ? path.basename(doc.path.trim())
+        : "";
+  if (!filename) return null;
+  const base = path.parse(filename).name;
+  return base ? `${base}-poster.jpg` : null;
+};
+
+const replaceUrlFilename = (sourceUrl: string, filename: string): string => {
+  if (!sourceUrl || !filename) return "";
+  const encoded = encodeURIComponent(filename);
+  const isAbsolute = /^https?:\/\//i.test(sourceUrl);
+
+  try {
+    const urlObj = isAbsolute
+      ? new URL(sourceUrl)
+      : new URL(sourceUrl, "http://payload.local");
+    const dir = urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/"));
+    urlObj.pathname = `${dir}/${encoded}`;
+    return isAbsolute
+      ? urlObj.toString()
+      : `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+  } catch {
+    return "";
+  }
+};
+
+const inferPosterFromFilesystem = (
+  doc: Record<string, unknown>,
+): { url: string; path: string } | null => {
+  const posterFilename = inferPosterFilename(doc);
+  if (!posterFilename) return null;
+
+  const originalPath =
+    typeof doc.path === "string" && doc.path.trim().length > 0
+      ? doc.path.trim()
+      : "";
+  const originalUrl =
+    typeof doc.url === "string" && doc.url.trim().length > 0
+      ? doc.url.trim()
+      : "";
+  if (!originalPath || !originalUrl) return null;
+
+  const posterPath = path.join(path.dirname(originalPath), posterFilename);
+  try {
+    if (!fs.existsSync(posterPath)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const posterUrl = replaceUrlFilename(originalUrl, posterFilename);
+  if (!posterUrl) return null;
+
+  return { url: posterUrl, path: posterPath };
+};
 
 const acceptsVideoUploads = (collection: CollectionConfig): boolean => {
   const upload = collection.upload;
@@ -215,6 +284,16 @@ const createProcessingStatusField = (): FieldConfig => ({
   ],
 });
 
+const createPlaybackPosterField = (
+  name: "playbackPosterUrl" | "playbackPosterPath",
+  label: string,
+): FieldConfig => ({
+  name,
+  type: "text",
+  label,
+  admin: { readOnly: true, hidden: true },
+});
+
 const buildAdminPresetMap = (presets: Record<string, Preset>) =>
   Object.fromEntries(
     Object.entries(presets).map(([name, preset]) => [
@@ -287,6 +366,30 @@ const pluginFactory = (
           fields.push(createVariantsField());
         }
 
+        const hasPlaybackPosterUrlField = fields.some(
+          (field) => "name" in field && field.name === "playbackPosterUrl",
+        );
+        if (!hasPlaybackPosterUrlField) {
+          fields.push(
+            createPlaybackPosterField(
+              "playbackPosterUrl",
+              "Playback poster URL",
+            ),
+          );
+        }
+
+        const hasPlaybackPosterPathField = fields.some(
+          (field) => "name" in field && field.name === "playbackPosterPath",
+        );
+        if (!hasPlaybackPosterPathField) {
+          fields.push(
+            createPlaybackPosterField(
+              "playbackPosterPath",
+              "Playback poster path",
+            ),
+          );
+        }
+
         const hasProcessingStatusField = fields.some(
           (field) => "name" in field && field.name === "videoProcessingStatus",
         );
@@ -349,10 +452,19 @@ const pluginFactory = (
             req,
           });
 
-          const posterUrl = buildPlaybackPosterUrl({ doc: docRecord, req });
+          const inferredPoster = inferPosterFromFilesystem(docRecord);
+          const posterUrl =
+            buildPlaybackPosterUrl({ doc: docRecord, req }) ??
+            inferredPoster?.url ??
+            undefined;
 
-          if (posterUrl) {
-            docRecord.playbackPosterUrl = posterUrl;
+          const thumbnailUrl = posterUrl ?? buildInlinePlaceholderPoster();
+
+          docRecord.thumbnailURL = thumbnailUrl;
+          docRecord.playbackPosterUrl = thumbnailUrl;
+
+          if (inferredPoster) {
+            docRecord.playbackPosterPath = inferredPoster.path;
           }
 
           return doc;

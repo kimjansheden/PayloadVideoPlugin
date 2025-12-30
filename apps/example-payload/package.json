@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "tsc --noEmit",
+    "check": "tsx scripts/check.ts",
+    "demo": "tsx scripts/demo.ts",
     "lint": "echo 'no lint configured'",
     "typecheck": "tsc --noEmit",
     "test": "echo 'no tests'",

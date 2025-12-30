@@ -168,7 +168,57 @@ const isPlaceholderPoster = (value: unknown): boolean => {
 };
 
 const isValidPosterCandidate = (value: unknown): value is string =>
-  typeof value === "string" && value.trim() && !isPlaceholderPoster(value);
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  !isPlaceholderPoster(value);
+
+const getFilename = (value: string): string => {
+  const stripped = value.split("?")[0]?.split("#")[0] ?? "";
+  const parts = stripped.split(/[/\\]/);
+  return parts[parts.length - 1] ?? "";
+};
+
+const replaceUrlFilename = (sourceUrl: string, filename: string): string => {
+  if (!sourceUrl || !filename) {
+    return "";
+  }
+
+  const encoded = encodeURIComponent(filename);
+  const isAbsolute = isAbsoluteUrl(sourceUrl);
+
+  try {
+    const urlObj = isAbsolute
+      ? new URL(sourceUrl)
+      : new URL(sourceUrl, "http://payload.local");
+    const dir = urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/"));
+    urlObj.pathname = `${dir}/${encoded}`;
+
+    if (isAbsolute) {
+      return urlObj.toString();
+    }
+
+    return `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+  } catch {
+    return "";
+  }
+};
+
+const getPosterFromPath = (doc: Record<string, unknown>): string => {
+  const posterPath = isValidPosterCandidate(doc.playbackPosterPath)
+    ? doc.playbackPosterPath.trim()
+    : "";
+  const docUrl = isValidPosterCandidate(doc.url) ? doc.url.trim() : "";
+  if (!posterPath || !docUrl) {
+    return "";
+  }
+
+  const posterFilename = getFilename(posterPath);
+  if (!posterFilename) {
+    return "";
+  }
+
+  return replaceUrlFilename(docUrl, posterFilename);
+};
 
 const getThumbnailCandidate = (doc: Record<string, unknown>): unknown => {
   const sizes = doc.sizes as Record<string, unknown> | undefined;
@@ -248,7 +298,9 @@ export const buildPlaybackPosterUrl = ({
   const storedPoster = isValidPosterCandidate(doc.playbackPosterUrl)
     ? doc.playbackPosterUrl.trim()
     : "";
-  const candidate = storedPoster || getThumbnailCandidate(doc);
+  const inferredPoster = getPosterFromPath(doc);
+  const candidate =
+    storedPoster || inferredPoster || getThumbnailCandidate(doc);
   const resolved = resolvePlaybackUrl(candidate, bases);
   return resolved || undefined;
 };

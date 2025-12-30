@@ -47,8 +47,19 @@ export type PlaybackSource = {
 };
 
 export type QueueConfig = {
+  /**
+   * Queue name for BullMQ.
+   * Defaults to "video-transcode".
+   */
   name?: string;
+  /**
+   * Redis connection string.
+   * Falls back to process.env.REDIS_URL when omitted.
+   */
   redisUrl?: string;
+  /**
+   * Number of concurrent workers for the queue.
+   */
   concurrency?: number;
 };
 
@@ -66,8 +77,17 @@ export type AccessVariantArgs = {
 };
 
 export type AccessControl = {
+  /**
+   * Authorize enqueue requests.
+   */
   enqueue?: (args: AccessEnqueueArgs) => boolean | Promise<boolean>;
+  /**
+   * Authorize "replace original" requests.
+   */
   replaceOriginal?: (args: AccessVariantArgs) => boolean | Promise<boolean>;
+  /**
+   * Authorize "remove variant" requests.
+   */
   removeVariant?: (args: AccessVariantArgs) => boolean | Promise<boolean>;
 };
 
@@ -93,9 +113,29 @@ export type ResolvePathsResult = {
   url: string;
 };
 
+/**
+ * Options passed to the video plugin.
+ *
+ * @example
+ * const presets = {
+ *   mobile360: { label: "360p Mobile", args: ["-vf", "scale=-2:360"] },
+ *   hd1080: { label: "Full HD 1080p", args: ["-vf", "scale=-2:1080"] },
+ * } satisfies VideoPluginOptions["presets"];
+ *
+ * type PresetName = keyof typeof presets;
+ *
+ * const options: VideoPluginOptions<PresetName> = {
+ *   presets,
+ *   queue: { redisUrl: process.env.REDIS_URL, concurrency: 1 },
+ *   autoEnqueue: true,
+ *   autoEnqueuePreset: "hd1080",
+ *   autoReplaceOriginal: true,
+ * };
+ */
 export type VideoPluginOptions<PresetName extends string = string> = {
   /**
    * Video presets keyed by name.
+   * Use `as const` + `keyof typeof presets` for type-safe preset names.
    */
   presets: Record<PresetName, Preset>;
   /**
@@ -105,7 +145,8 @@ export type VideoPluginOptions<PresetName extends string = string> = {
   /**
    * Auto-enqueue a preset when a new video is created.
    * - false/undefined: disabled
-   * - true: use the default preset (1080 -> hd1080 -> first preset)
+   * - true: use autoEnqueuePreset when set, otherwise fall back to
+   *   1080 -> hd1080 -> first preset.
    *
    * @example
    * autoEnqueue: true
@@ -113,6 +154,7 @@ export type VideoPluginOptions<PresetName extends string = string> = {
   autoEnqueue?: boolean;
   /**
    * Optional: override the default preset used when autoEnqueue is true.
+   * Must match a preset key (not the label).
    *
    * @example
    * autoEnqueuePreset: "hd1080"
@@ -120,6 +162,7 @@ export type VideoPluginOptions<PresetName extends string = string> = {
   autoEnqueuePreset?: PresetName;
   /**
    * Replace the original file after an auto-enqueued job finishes.
+   * This only applies to autoEnqueue jobs.
    */
   autoReplaceOriginal?: boolean;
   /**
@@ -128,6 +171,13 @@ export type VideoPluginOptions<PresetName extends string = string> = {
   access?: AccessControl;
   /**
    * Customize file/URL resolution for generated variants.
+   *
+   * @example
+   * resolvePaths: ({ original, presetName }) => ({
+   *   dir: path.join("/data/videos", presetName),
+   *   filename: `${path.parse(original.filename).name}.${presetName}.mp4`,
+   *   url: `/videos/${presetName}/${path.parse(original.filename).name}.mp4`,
+   * })
    */
   resolvePaths?: (args: ResolvePathsArgs) => ResolvePathsResult;
 };

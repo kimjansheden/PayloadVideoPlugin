@@ -68,6 +68,12 @@ type FieldProps = {
 type VideoDocument = {
   url?: string;
   playbackPosterUrl?: string;
+  playbackPosterPath?: string;
+  filesize?: number;
+  duration?: number;
+  width?: number;
+  height?: number;
+  bitrate?: number;
   variants?: VariantRecord[];
   videoProcessingStatus?: VideoProcessingStatus | null;
 };
@@ -133,6 +139,44 @@ const readVariantId = (variant: VariantRecord | null | undefined) => {
   return undefined;
 };
 
+const readVariantUrl = (variant: VariantRecord | null | undefined) => {
+  if (!variant || typeof variant !== "object") return undefined;
+  if (typeof variant.url === "string" && variant.url.trim().length > 0) {
+    return variant.url.trim();
+  }
+  return undefined;
+};
+
+const resolvePreviewVideoUrl = (
+  doc: VideoDocument | null,
+): string | undefined => {
+  if (!doc) return undefined;
+  const variants = Array.isArray(doc.variants) ? doc.variants : [];
+  const candidates = variants
+    .map((variant) => ({
+      url: readVariantUrl(variant),
+      size: typeof variant.size === "number" ? variant.size : undefined,
+    }))
+    .filter(
+      (candidate): candidate is { url: string; size: number | undefined } =>
+        Boolean(candidate.url),
+    );
+  if (candidates.length > 0) {
+    candidates.sort(
+      (left, right) =>
+        (left.size ?? Number.POSITIVE_INFINITY) -
+        (right.size ?? Number.POSITIVE_INFINITY),
+    );
+    return candidates[0].url;
+  }
+
+  if (typeof doc.url === "string" && doc.url.trim().length > 0) {
+    return doc.url.trim();
+  }
+
+  return undefined;
+};
+
 const resolveVariantIdentifier = (
   variant: VariantRecord,
   fallback: string,
@@ -167,10 +211,44 @@ const formatSeconds = (value?: number): string => {
   return `${minutes} min ${seconds}s`;
 };
 
+const READONLY_FIELDS = [
+  "variants",
+  "videoProcessingStatus",
+  "playbackPosterUrl",
+  "playbackPosterPath",
+  "filesize",
+  "duration",
+  "width",
+  "height",
+  "bitrate",
+] as const;
+
+type ReadonlyField = (typeof READONLY_FIELDS)[number];
+
+const mergeReadOnlyFields = (
+  current: Data | undefined,
+  doc: VideoDocument,
+): Data => {
+  const hasCurrent = isRecord(current);
+  const nextData: Record<string, unknown> = hasCurrent ? { ...current } : {};
+
+  READONLY_FIELDS.forEach((field) => {
+    if (!Object.prototype.hasOwnProperty.call(doc, field)) {
+      return;
+    }
+    const value = doc[field as ReadonlyField];
+    if (value !== undefined) {
+      nextData[field] = value;
+    }
+  });
+
+  return (hasCurrent ? nextData : doc) as Data;
+};
+
 const VideoField: FC<FieldProps> = (props) => {
   const { useEffect, useMemo, useState, useCallback, useRef } = React;
   const { field } = props;
-  const { id, lastUpdateTime, setData } = useDocumentInfo();
+  const { id, setData, data: formData } = useDocumentInfo();
   const formModified = useFormModified();
   const custom =
     field.custom ?? (isVideoVariantFieldConfig(props) ? props : undefined);
@@ -191,13 +269,18 @@ const VideoField: FC<FieldProps> = (props) => {
   const [EasyCrop, setEasyCrop] =
     useState<React.ComponentType<CropperProps> | null>(null);
 
+  // Cropping is intentionally opt-in per enqueue: enabling `enableCrop` for a
+  // preset only exposes crop controls in the UI. The generated variant will not
+  // be cropped unless the editor explicitly enables it.
+  const [applyCrop, setApplyCrop] = useState(false);
+
   useEffect(() => {
-    if (typeof window !== "undefined" && !EasyCrop) {
+    if (typeof window !== "undefined" && applyCrop && !EasyCrop) {
       import("react-easy-crop").then((module) => {
         setEasyCrop(() => module.default);
       });
     }
-  }, [EasyCrop]);
+  }, [EasyCrop, applyCrop]);
 
   const [selectedPreset, setSelectedPreset] = useState<string | undefined>(
     presetNames[0],
@@ -222,14 +305,33 @@ const VideoField: FC<FieldProps> = (props) => {
   const [zoom, setZoom] = useState(1);
   const [cropSelection, setCropSelection] = useState(DEFAULT_CROP);
   const expectedPresetRef = useRef<string | null>(null);
+  const formDataRef = useRef<Data | undefined>(formData);
+  const formModifiedRef = useRef(formModified);
   const sleep = useCallback(
     (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     [],
   );
 
   useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  useEffect(() => {
+    formModifiedRef.current = formModified;
+  }, [formModified]);
+
+  useEffect(() => {
     expectedPresetRef.current = expectedPreset;
   }, [expectedPreset]);
+
+  useEffect(() => {
+    // Switching presets should never accidentally keep an old crop selection
+    // around. Make the editor opt in again for the next enqueue.
+    setApplyCrop(false);
+    setCropSelection(DEFAULT_CROP);
+    setCropState({ x: 0, y: 0 });
+    setZoom(1);
+  }, [selectedPreset]);
 
   useEffect(() => {
     if (!processingStatus) return;
@@ -596,9 +698,10 @@ const VideoField: FC<FieldProps> = (props) => {
       }
 
       setDocData(nextDoc);
-      if (!formModified) {
-        setData(nextDoc as Data);
-      }
+      const nextFormData = formModifiedRef.current
+        ? mergeReadOnlyFields(formDataRef.current, nextDoc)
+        : (nextDoc as Data);
+      setData(nextFormData);
       setProcessingStatus(nextDoc.videoProcessingStatus ?? null);
 
       const docVariants = Array.isArray(nextDoc.variants)
@@ -617,11 +720,11 @@ const VideoField: FC<FieldProps> = (props) => {
     } finally {
       setLoadingDoc(false);
     }
-  }, [apiBase, custom, docId, formModified, setData]);
+  }, [apiBase, custom, docId, setData]);
 
   useEffect(() => {
     void fetchDocument();
-  }, [fetchDocument, jobStatus?.state, lastUpdateTime]);
+  }, [fetchDocument]);
 
   const enqueue = useCallback(async () => {
     if (!custom || !docId || !selectedPreset) return;
@@ -633,10 +736,16 @@ const VideoField: FC<FieldProps> = (props) => {
       const data = await sendEnqueueRequest({
         documentId: docId,
         presetName: selectedPreset,
-        crop: allowCrop ? cropSelection : undefined,
+        crop: allowCrop && applyCrop ? cropSelection : undefined,
       });
       setJobStatus(data);
       setPollingJobId(String(data.id));
+      if (allowCrop && applyCrop) {
+        setApplyCrop(false);
+        setCropSelection(DEFAULT_CROP);
+        setCropState({ x: 0, y: 0 });
+        setZoom(1);
+      }
     } catch (enqueueError) {
       setError(
         enqueueError instanceof Error
@@ -645,6 +754,7 @@ const VideoField: FC<FieldProps> = (props) => {
       );
     }
   }, [
+    applyCrop,
     custom,
     cropSelection,
     docId,
@@ -684,12 +794,9 @@ const VideoField: FC<FieldProps> = (props) => {
       }
 
       if (active) {
-        const refreshNote = formModified
-          ? "Save or reload to see the updated file metadata."
-          : "Original metadata has been refreshed.";
         setMessage({
           type: "info",
-          text: `Job ${jobId} completed. ${refreshNote}`,
+          text: `Job ${jobId} completed. Metadata refreshed.`,
         });
       }
     };
@@ -753,23 +860,32 @@ const VideoField: FC<FieldProps> = (props) => {
     typeof docData?.playbackPosterUrl === "string"
       ? docData.playbackPosterUrl.trim()
       : "";
+  const previewVideoUrl = useMemo(
+    () => resolvePreviewVideoUrl(docData),
+    [docData],
+  );
 
   useEffect(() => {
     if (!cropEnabled) {
+      setApplyCrop(false);
       setCropSelection(DEFAULT_CROP);
       setCropState({ x: 0, y: 0 });
       setZoom(1);
     }
   }, [cropEnabled]);
 
-  const handleCropComplete = useCallback((area: Area) => {
-    setCropSelection({
-      width: area.width / 100,
-      height: area.height / 100,
-      x: area.x / 100,
-      y: area.y / 100,
-    });
-  }, []);
+  const handleCropComplete = useCallback(
+    (area: Area) => {
+      if (!applyCrop) return;
+      setCropSelection({
+        width: area.width / 100,
+        height: area.height / 100,
+        x: area.x / 100,
+        y: area.y / 100,
+      });
+    },
+    [applyCrop],
+  );
 
   const handleTogglePreview = useCallback((key: string) => {
     setPreviewKey((current) => (current === key ? null : key));
@@ -971,46 +1087,71 @@ const VideoField: FC<FieldProps> = (props) => {
           <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Crop
           </span>
-          <div className="video-crop-wrapper">
-            {EasyCrop ? (
-              <EasyCrop
-                video={docData.url}
-                crop={cropState}
-                zoom={zoom}
-                rotation={0}
-                aspect={4 / 3}
-                minZoom={1}
-                maxZoom={3}
-                cropShape="rect"
-                zoomSpeed={1}
-                restrictPosition
-                mediaProps={{}}
-                cropperProps={{}}
-                style={{}}
-                classes={{}}
-                keyboardStep={1}
-                onCropChange={setCropState}
-                onZoomChange={setZoom}
-                onCropComplete={handleCropComplete}
-                objectFit="contain"
-                showGrid
-              />
-            ) : (
-              <div>Loading cropper...</div>
-            )}
-          </div>
           <label className="flex items-center gap-2 text-xs text-slate-600">
-            Zoom
             <input
-              type="range"
-              min={1}
-              max={3}
-              step={0.1}
-              value={zoom}
-              onChange={(event) => setZoom(Number(event.target.value))}
-              className="w-48"
+              type="checkbox"
+              checked={applyCrop}
+              onChange={(event) => {
+                const nextApplyCrop = event.target.checked;
+                setApplyCrop(nextApplyCrop);
+                if (!nextApplyCrop) {
+                  setCropSelection(DEFAULT_CROP);
+                  setCropState({ x: 0, y: 0 });
+                  setZoom(1);
+                }
+              }}
             />
+            Apply crop for this enqueue
           </label>
+          {applyCrop ? (
+            <>
+              <div className="video-crop-wrapper">
+                {EasyCrop ? (
+                  <EasyCrop
+                    video={docData.url}
+                    crop={cropState}
+                    zoom={zoom}
+                    rotation={0}
+                    aspect={4 / 3}
+                    minZoom={1}
+                    maxZoom={3}
+                    cropShape="rect"
+                    zoomSpeed={1}
+                    restrictPosition
+                    mediaProps={{}}
+                    cropperProps={{}}
+                    style={{}}
+                    classes={{}}
+                    keyboardStep={1}
+                    onCropChange={setCropState}
+                    onZoomChange={setZoom}
+                    onCropComplete={handleCropComplete}
+                    objectFit="contain"
+                    showGrid
+                  />
+                ) : (
+                  <div>Loading cropper...</div>
+                )}
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                Zoom
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  value={zoom}
+                  onChange={(event) => setZoom(Number(event.target.value))}
+                  className="w-48"
+                />
+              </label>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Cropping is off by default. Enable it to crop the generated
+              variant.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -1025,6 +1166,21 @@ const VideoField: FC<FieldProps> = (props) => {
               alt="Video poster"
               className="h-auto w-full object-contain"
               loading="lazy"
+            />
+          </div>
+        </div>
+      ) : previewVideoUrl ? (
+        <div className="flex flex-col gap-2 text-xs text-slate-600">
+          <span className="font-semibold uppercase tracking-wide text-slate-500">
+            Poster
+          </span>
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            <video
+              className="h-auto w-full object-contain"
+              preload="metadata"
+              muted
+              playsInline
+              src={previewVideoUrl}
             />
           </div>
         </div>

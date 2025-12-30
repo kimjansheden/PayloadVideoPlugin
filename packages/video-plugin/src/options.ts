@@ -32,10 +32,9 @@ export type NormalizedPresets = Record<string, Preset>;
 export const normalizePresets = <PresetName extends string>(
   presets: Record<PresetName, Preset>,
 ): Record<PresetName, Preset> => {
-  const entries = Object.entries(presets).map(([name, preset]) => [
-    name,
-    { ...preset },
-  ]);
+  const entries = (Object.entries(presets) as Array<[PresetName, Preset]>).map(
+    ([name, preset]) => [name, { ...preset }],
+  );
   return Object.fromEntries(entries) as Record<PresetName, Preset>;
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "@kimjansheden/payload-video-processor",
-  "version": "0.1.12",
+  "version": "0.1.16",
   "description": "Queued FFmpeg video variant processing for Payload CMS",
   "repository": {
     "type": "git",

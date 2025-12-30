@@ -3,7 +3,8 @@ import config from "./payload.config.js";
 
 // Initialize Payload
 const start = async (): Promise<void> => {
-  console.log("Starting Payload server...");
+  console.log("[example-payload] Initializing Payload (local API only)...");
+  console.log("[example-payload] Note: this app does NOT start a /admin UI.");
 
   try {
     // Initialize Payload with the config
@@ -11,11 +12,10 @@ const start = async (): Promise<void> => {
       config,
     });
 
-    console.log("Payload initialized successfully!");
-    console.log("You can now:");
-    console.log("1. Test the Local API programmatically");
-    console.log("2. Use the REST API if you set up HTTP endpoints");
-    console.log("3. Access your database directly through Payload");
+    console.log("[example-payload] Payload initialized successfully!");
+    console.log("[example-payload] You can now run:");
+    console.log("  - pnpm worker  (separate process)");
+    console.log("  - pnpm demo    (creates upload + waits for variants)");
 
     // Example: Create a test user if none exists
     const users = await payload.find({
@@ -25,13 +25,17 @@ const start = async (): Promise<void> => {
 
     if (users.totalDocs === 0) {
       console.log(
-        "No users found. You may want to create one programmatically or through seeding.",
+        "[example-payload] No users found (expected unless you seed).",
       );
     } else {
-      console.log(`Found ${users.totalDocs} user(s) in database`);
+      console.log(
+        `[example-payload] Found ${users.totalDocs} user(s) in database`,
+      );
     }
+
+    await payload.destroy();
   } catch (error) {
-    console.error("Failed to initialize Payload:", error);
+    console.error("[example-payload] Failed to initialize Payload:", error);
     process.exit(1);
   }
 };

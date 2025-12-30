@@ -1,0 +1,6 @@
+media/*
+tmp/*
+
+!media/.gitkeep
+!tmp/.gitkeep
+

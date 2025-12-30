@@ -8,7 +8,8 @@ BullMQ and FFmpeg.
 
 - `packages/video-plugin` – the plugin source. Provides queue-backed video
   variants, Admin UI controls, and a worker helper.
-- `apps/example-payload` – minimal Payload project wired up with the plugin.
+- `apps/example-payload` – **CLI-only** reference project wired up with the plugin.
+  Useful for validating config + worker + queue + filesystem variants. It is **not** a full `/admin` UI project.
 
 ## Getting started
 
@@ -44,3 +45,27 @@ Additional utilities:
 
 The example project expects MongoDB, Redis, and standard Payload environment
 variables (`PAYLOAD_SECRET`, `MONGODB_URI`, `REDIS_URL`, etc.).
+
+For details and runnable commands, see `apps/example-payload/README.md`.
+
+## Publishing (maintainers)
+
+Publishing is automated to avoid manually editing versions:
+
+- Publish (checks npm latest and bumps interactively when needed):
+
+```bash
+pnpm -C /Users/kimjansheden/Dropbox/Scriptz/Javascript/React/packages/PayloadVideoPlugin plugin:publish
+```
+
+- Check-only:
+
+```bash
+pnpm -C /Users/kimjansheden/Dropbox/Scriptz/Javascript/React/packages/PayloadVideoPlugin plugin:publish:check
+```
+
+- Dry-run:
+
+```bash
+node /Users/kimjansheden/Dropbox/Scriptz/Javascript/React/packages/PayloadVideoPlugin/scripts/plugin-publish.mjs --dry-run --yes
+```

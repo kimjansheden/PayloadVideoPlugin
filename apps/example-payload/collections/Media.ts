@@ -4,17 +4,41 @@ import type { CollectionConfig } from "payload";
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
+const rootDir = path.resolve(dirname, "..");
+
+const staticDir = process.env.VIDEO_STORAGE_PATH
+  ? path.resolve(rootDir, process.env.VIDEO_STORAGE_PATH)
+  : path.resolve(rootDir, "media");
 
 const Media: CollectionConfig = {
   slug: "media",
   upload: {
-    staticDir: path.resolve(dirname, "../media"),
+    staticDir,
     mimeTypes: ["video/mp4", "video/webm", "video/quicktime"],
   },
   admin: {
     useAsTitle: "filename",
   },
-  fields: [],
+  fields: [
+    {
+      name: "path",
+      type: "text",
+      admin: {
+        readOnly: true,
+        position: "sidebar",
+      },
+    },
+  ],
+  hooks: {
+    afterRead: [
+      ({ doc }) => {
+        if (doc && typeof doc.filename === "string") {
+          doc.path = path.join(staticDir, doc.filename);
+        }
+        return doc;
+      },
+    ],
+  },
 };
 
 export default Media;

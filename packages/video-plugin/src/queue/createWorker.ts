@@ -96,6 +96,74 @@ export const createWorker = async (
         return trimmed.length > 0 ? trimmed : undefined;
       };
 
+      const buildPosterFilename = (
+        sourceFilename: string | undefined,
+      ): string => {
+        const base = sourceFilename
+          ? path.parse(sourceFilename).name
+          : parsed.id;
+        return `${base}-poster.jpg`;
+      };
+
+      const buildPosterUrl = (
+        sourceUrl: string | undefined,
+        posterFilename: string,
+      ): string | undefined => {
+        if (!sourceUrl) {
+          return undefined;
+        }
+
+        const encodedPoster = encodeURIComponent(posterFilename);
+        const isAbsolute = /^https?:\/\//i.test(sourceUrl);
+
+        try {
+          const urlObj = isAbsolute
+            ? new URL(sourceUrl)
+            : new URL(sourceUrl, "http://payload.local");
+          const dir = path.posix.dirname(urlObj.pathname);
+          urlObj.pathname = `${dir}/${encodedPoster}`;
+
+          if (isAbsolute) {
+            return urlObj.toString();
+          }
+
+          return `${urlObj.pathname}${urlObj.search}${urlObj.hash}`;
+        } catch {
+          return undefined;
+        }
+      };
+
+      const generatePoster = async ({
+        inputPath,
+        outputPath,
+        seekSeconds,
+      }: {
+        inputPath: string;
+        outputPath: string;
+        seekSeconds?: number;
+      }): Promise<boolean> => {
+        try {
+          await mkdir(path.dirname(outputPath), { recursive: true });
+
+          await new Promise<void>((resolve, reject) => {
+            const command = ffmpeg(inputPath);
+            if (typeof seekSeconds === "number" && seekSeconds > 0) {
+              command.seekInput(seekSeconds);
+            }
+            command.outputOptions(["-frames:v 1", "-q:v 4"]);
+            command.output(outputPath);
+            command.on("end", () => resolve());
+            command.on("error", (error) => reject(error));
+            command.run();
+          });
+
+          return true;
+        } catch (error) {
+          console.warn("[video-processor] Failed to generate poster", error);
+          return false;
+        }
+      };
+
       try {
         const document = await client.findByID({
           collection: parsed.collection,
@@ -178,6 +246,32 @@ export const createWorker = async (
         const fileStats = await stat(writePath);
         const outputMetadata = await probeVideo(writePath);
 
+        const posterFilename = buildPosterFilename(filename);
+        const posterStoredPath = buildStoredPath(originalPath, posterFilename);
+        const posterWritePath = path.isAbsolute(posterStoredPath)
+          ? posterStoredPath
+          : path.join(process.cwd(), posterStoredPath);
+        const posterUrl = buildPosterUrl(url, posterFilename);
+        const seekSeconds =
+          typeof inputMetadata.duration === "number"
+            ? Math.min(1, Math.max(0, inputMetadata.duration * 0.1))
+            : undefined;
+        const posterCreated = posterUrl
+          ? await generatePoster({
+              inputPath: writePath,
+              outputPath: posterWritePath,
+              seekSeconds,
+            })
+          : false;
+        const posterUpdate =
+          posterCreated && posterUrl
+            ? {
+                playbackPosterUrl: posterUrl,
+                playbackPosterPath: posterStoredPath,
+                thumbnailURL: posterUrl,
+              }
+            : {};
+
         const storedPath = buildStoredPath(originalPath, writeFilename);
         const variant: VariantRecord = {
           preset: parsed.preset,
@@ -237,6 +331,7 @@ export const createWorker = async (
             variants: nextVariants.filter(
               (item) => item?.preset !== variant.preset,
             ),
+            ...posterUpdate,
           };
 
           if (typeof variant.size === "number") {
@@ -270,6 +365,7 @@ export const createWorker = async (
             id: parsed.id,
             data: {
               variants: nextVariants,
+              ...posterUpdate,
             },
           });
         }
