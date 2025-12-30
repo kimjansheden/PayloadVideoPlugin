@@ -229,7 +229,11 @@ export const buildPlaybackPosterUrl = ({
   const docUrl = typeof doc.url === "string" ? doc.url.trim() : "";
   const requestOrigin = getRequestOrigin(req);
   const bases = [docUrl, requestOrigin].filter(Boolean);
-  const candidate = getThumbnailCandidate(doc);
+  const storedPoster =
+    typeof doc.playbackPosterUrl === "string"
+      ? doc.playbackPosterUrl.trim()
+      : "";
+  const candidate = storedPoster || getThumbnailCandidate(doc);
   const resolved = resolvePlaybackUrl(candidate, bases);
   return resolved || undefined;
 };

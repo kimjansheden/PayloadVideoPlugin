@@ -242,7 +242,7 @@ const pluginFactory = (
               });
 
               if (posterUrl) {
-                (doc as any).playbackPosterUrl = posterUrl;
+                (doc as Record<string, unknown>).playbackPosterUrl = posterUrl;
               }
 
               return doc;

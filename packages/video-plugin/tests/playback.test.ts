@@ -12,6 +12,7 @@ describe("playback helpers", () => {
       url: "http://localhost:3000/api/media/file/Screen%20Recording.mov",
       mimeType: "video/quicktime",
       thumbnailURL: "/video-placeholder.svg",
+      playbackPosterUrl: "/api/media/file/Screen Recording_poster.jpg",
       variants: [
         {
           preset: "hd1080",
@@ -60,7 +61,9 @@ describe("playback helpers", () => {
       } as PayloadRequest,
     });
 
-    expect(posterUrl).toBe("http://localhost:3000/video-placeholder.svg");
+    expect(posterUrl).toBe(
+      "http://localhost:3000/api/media/file/Screen%20Recording_poster.jpg",
+    );
   });
 
   it("resolves relative doc.url via serverURL when needed", () => {
