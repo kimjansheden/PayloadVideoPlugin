@@ -51,6 +51,12 @@ const videoOptions = {
     redisUrl: process.env.REDIS_URL,
     concurrency: 1,
   },
+  // Auto-enqueue a preset when a new video is uploaded.
+  autoEnqueue: true,
+  // Optional: override the default preset used on create.
+  autoEnqueuePreset: "hd1080",
+  // Optional: replace the original with the auto-generated variant.
+  autoReplaceOriginal: true,
 };
 
 export default buildConfig({
@@ -61,6 +67,11 @@ export default buildConfig({
   plugins: [videoPlugin(videoOptions)],
 });
 ```
+
+When `autoEnqueue` is `true`, the plugin
+tries a preset named `1080`, then `hd1080`, and finally falls back to the first
+configured preset.
+Set `autoEnqueuePreset` to force a specific preset name when auto-enqueueing.
 
 2. Provide a worker options module and bundle it to JS (the CLI needs a JS file).
    Example setup:

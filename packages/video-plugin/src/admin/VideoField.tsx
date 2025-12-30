@@ -1,9 +1,15 @@
 "use client";
 
 import React, { type FC } from "react";
-import { useDocumentInfo } from "@payloadcms/ui";
+import { useDocumentInfo, useFormModified } from "@payloadcms/ui";
+import type { Data } from "payload";
+import type { Area, CropperProps } from "react-easy-crop";
 
-import type { VariantRecord, VideoVariantFieldConfig } from "../types";
+import type {
+  VariantRecord,
+  VideoProcessingStatus,
+  VideoVariantFieldConfig,
+} from "../types";
 
 if (typeof document !== "undefined") {
   void import("./styles.css");
@@ -59,6 +65,23 @@ type FieldProps = {
   };
 } & Partial<VideoVariantFieldConfig>;
 
+type VideoDocument = {
+  url?: string;
+  playbackPosterUrl?: string;
+  variants?: VariantRecord[];
+  videoProcessingStatus?: VideoProcessingStatus | null;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const extractDocument = (payload: unknown): VideoDocument | null => {
+  if (!isRecord(payload)) return null;
+  const candidate = isRecord(payload.doc) ? payload.doc : payload;
+  if (!isRecord(candidate)) return null;
+  return candidate as VideoDocument;
+};
+
 const isVideoVariantFieldConfig = (
   value: unknown,
 ): value is VideoVariantFieldConfig => {
@@ -90,6 +113,9 @@ const formatProgress = (value?: number): string => {
   if (typeof value !== "number") return "0%";
   return `${Math.round(value)}%`;
 };
+
+const isActiveJobState = (state?: string): boolean =>
+  Boolean(state && state !== "completed" && state !== "failed");
 
 const readVariantPreset = (variant: VariantRecord | null | undefined) => {
   if (!variant || typeof variant !== "object") return undefined;
@@ -144,7 +170,8 @@ const formatSeconds = (value?: number): string => {
 const VideoField: FC<FieldProps> = (props) => {
   const { useEffect, useMemo, useState, useCallback, useRef } = React;
   const { field } = props;
-  const { id } = useDocumentInfo();
+  const { id, lastUpdateTime, setData } = useDocumentInfo();
+  const formModified = useFormModified();
   const custom =
     field.custom ?? (isVideoVariantFieldConfig(props) ? props : undefined);
   const presets = custom?.presets ?? {};
@@ -161,14 +188,13 @@ const VideoField: FC<FieldProps> = (props) => {
   }, [id]);
 
   // Lazy load react-easy-crop to avoid SSR issues
-  const [EasyCrop, setEasyCrop] = useState<FC<Record<string, unknown>> | null>(
-    null,
-  );
+  const [EasyCrop, setEasyCrop] =
+    useState<React.ComponentType<CropperProps> | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined" && !EasyCrop) {
       import("react-easy-crop").then((module) => {
-        setEasyCrop(() => module.default as any);
+        setEasyCrop(() => module.default);
       });
     }
   }, [EasyCrop]);
@@ -176,7 +202,7 @@ const VideoField: FC<FieldProps> = (props) => {
   const [selectedPreset, setSelectedPreset] = useState<string | undefined>(
     presetNames[0],
   );
-  const [docData, setDocData] = useState<any>(null);
+  const [docData, setDocData] = useState<VideoDocument | null>(null);
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{
@@ -186,6 +212,8 @@ const VideoField: FC<FieldProps> = (props) => {
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [pollingJobId, setPollingJobId] = useState<string | null>(null);
   const [expectedPreset, setExpectedPreset] = useState<string | null>(null);
+  const [processingStatus, setProcessingStatus] =
+    useState<VideoProcessingStatus | null>(null);
   const [variants, setVariants] = useState<VariantRecord[]>([]);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [replaceLoading, setReplaceLoading] = useState<string | null>(null);
@@ -202,6 +230,47 @@ const VideoField: FC<FieldProps> = (props) => {
   useEffect(() => {
     expectedPresetRef.current = expectedPreset;
   }, [expectedPreset]);
+
+  useEffect(() => {
+    if (!processingStatus) return;
+    const statusJobId =
+      typeof processingStatus.jobId === "string"
+        ? processingStatus.jobId.trim()
+        : "";
+    if (!statusJobId) return;
+
+    if (!jobStatus) {
+      setJobStatus({
+        id: statusJobId,
+        state: processingStatus.state,
+        progress: processingStatus.progress,
+      });
+    }
+
+    if (isActiveJobState(processingStatus.state) && !pollingJobId) {
+      setPollingJobId(statusJobId);
+      if (!expectedPreset && processingStatus.preset) {
+        setExpectedPreset(processingStatus.preset);
+      }
+    }
+
+    if (
+      processingStatus.preset &&
+      presets[processingStatus.preset] &&
+      (!selectedPreset ||
+        (isActiveJobState(processingStatus.state) &&
+          selectedPreset !== processingStatus.preset))
+    ) {
+      setSelectedPreset(processingStatus.preset);
+    }
+  }, [
+    expectedPreset,
+    jobStatus,
+    pollingJobId,
+    presets,
+    processingStatus,
+    selectedPreset,
+  ]);
 
   const messageClassName =
     message?.type === "error"
@@ -376,11 +445,11 @@ const VideoField: FC<FieldProps> = (props) => {
       });
 
       if (docId === mediaId) {
-        const nextDoc = (payload as any)?.doc;
-        if (nextDoc && typeof nextDoc === "object") {
+        const nextDoc = extractDocument(payload);
+        if (nextDoc) {
           setDocData(nextDoc);
           const docVariants = Array.isArray(nextDoc?.variants)
-            ? (nextDoc.variants as VariantRecord[])
+            ? nextDoc.variants
             : [];
           setVariants(docVariants);
         } else {
@@ -420,11 +489,11 @@ const VideoField: FC<FieldProps> = (props) => {
       });
 
       if (docId === mediaId) {
-        const nextDoc = (payload as any)?.doc;
-        if (nextDoc && typeof nextDoc === "object") {
+        const nextDoc = extractDocument(payload);
+        if (nextDoc) {
           setDocData(nextDoc);
           const docVariants = Array.isArray(nextDoc?.variants)
-            ? (nextDoc.variants as VariantRecord[])
+            ? nextDoc.variants
             : [];
           setVariants(docVariants);
         }
@@ -517,15 +586,27 @@ const VideoField: FC<FieldProps> = (props) => {
       }
 
       const payload = await response.json();
-      const nextDoc = (payload as any).doc ?? payload;
-      setDocData(nextDoc);
+      const nextDoc = extractDocument(payload);
 
-      const docVariants = Array.isArray(nextDoc?.variants)
-        ? (nextDoc.variants as VariantRecord[])
+      if (!nextDoc) {
+        setDocData(null);
+        setVariants([]);
+        setProcessingStatus(null);
+        return null;
+      }
+
+      setDocData(nextDoc);
+      if (!formModified) {
+        setData(nextDoc as Data);
+      }
+      setProcessingStatus(nextDoc.videoProcessingStatus ?? null);
+
+      const docVariants = Array.isArray(nextDoc.variants)
+        ? nextDoc.variants
         : [];
       setVariants(docVariants);
 
-      return { doc: nextDoc as any, variants: docVariants };
+      return { doc: nextDoc, variants: docVariants };
     } catch (fetchError) {
       setError(
         fetchError instanceof Error
@@ -536,11 +617,11 @@ const VideoField: FC<FieldProps> = (props) => {
     } finally {
       setLoadingDoc(false);
     }
-  }, [apiBase, custom, docId]);
+  }, [apiBase, custom, docId, formModified, setData]);
 
   useEffect(() => {
     void fetchDocument();
-  }, [fetchDocument, jobStatus?.state]);
+  }, [fetchDocument, jobStatus?.state, lastUpdateTime]);
 
   const enqueue = useCallback(async () => {
     if (!custom || !docId || !selectedPreset) return;
@@ -583,30 +664,32 @@ const VideoField: FC<FieldProps> = (props) => {
         return;
       }
 
-      const maxAttempts = 5;
-      for (let attempt = 0; attempt < maxAttempts && active; attempt += 1) {
-        const result = await fetchDocument();
-        const hasVariant = Boolean(
-          result?.variants?.some(
-            (variant) => readVariantPreset(variant) === presetToWaitFor,
-          ),
-        );
-        if (hasVariant) {
-          setExpectedPreset(null);
-          setJobStatus({ id: jobId, state: "completed", progress: 100 });
-          setMessage({
-            type: "success",
-            text: `Variant \"${presetToWaitFor}\" saved.`,
-          });
-          return;
-        }
-        await sleep(1000);
+      const result = await fetchDocument();
+      const hasVariant = Boolean(
+        presetToWaitFor &&
+        result?.variants?.some(
+          (variant) => readVariantPreset(variant) === presetToWaitFor,
+        ),
+      );
+
+      setExpectedPreset(null);
+      setJobStatus({ id: jobId, state: "completed", progress: 100 });
+
+      if (hasVariant && presetToWaitFor) {
+        setMessage({
+          type: "success",
+          text: `Variant \"${presetToWaitFor}\" saved.`,
+        });
+        return;
       }
 
       if (active) {
+        const refreshNote = formModified
+          ? "Save or reload to see the updated file metadata."
+          : "Original metadata has been refreshed.";
         setMessage({
           type: "info",
-          text: `Job ${jobId} finished, but the new variant isn’t visible yet. Try refreshing the page.`,
+          text: `Job ${jobId} completed. ${refreshNote}`,
         });
       }
     };
@@ -659,10 +742,17 @@ const VideoField: FC<FieldProps> = (props) => {
       active = false;
       window.clearInterval(interval);
     };
-  }, [custom, fetchDocument, pollingJobId, sleep]);
+  }, [custom, fetchDocument, formModified, pollingJobId, sleep]);
 
   const preset = selectedPreset ? presets[selectedPreset] : undefined;
   const cropEnabled = Boolean(preset?.enableCrop);
+  const activePresetLabel = expectedPreset
+    ? (presets[expectedPreset]?.label ?? expectedPreset)
+    : null;
+  const posterUrl =
+    typeof docData?.playbackPosterUrl === "string"
+      ? docData.playbackPosterUrl.trim()
+      : "";
 
   useEffect(() => {
     if (!cropEnabled) {
@@ -672,17 +762,14 @@ const VideoField: FC<FieldProps> = (props) => {
     }
   }, [cropEnabled]);
 
-  const handleCropComplete = useCallback(
-    (area: { width: number; height: number; x: number; y: number }) => {
-      setCropSelection({
-        width: area.width / 100,
-        height: area.height / 100,
-        x: area.x / 100,
-        y: area.y / 100,
-      });
-    },
-    [],
-  );
+  const handleCropComplete = useCallback((area: Area) => {
+    setCropSelection({
+      width: area.width / 100,
+      height: area.height / 100,
+      x: area.x / 100,
+      y: area.y / 100,
+    });
+  }, []);
 
   const handleTogglePreview = useCallback((key: string) => {
     setPreviewKey((current) => (current === key ? null : key));
@@ -716,11 +803,11 @@ const VideoField: FC<FieldProps> = (props) => {
           documentId: docId,
           preset,
         });
-        const updatedDoc = (payload as any)?.doc;
-        if (updatedDoc && typeof updatedDoc === "object") {
+        const updatedDoc = extractDocument(payload);
+        if (updatedDoc) {
           setDocData(updatedDoc);
           const docVariants = Array.isArray(updatedDoc?.variants)
-            ? (updatedDoc.variants as VariantRecord[])
+            ? updatedDoc.variants
             : [];
           setVariants(docVariants);
         } else {
@@ -779,11 +866,11 @@ const VideoField: FC<FieldProps> = (props) => {
           variantId: readVariantId(variant),
           variantIndex: index,
         });
-        const updatedDoc = (payload as any)?.doc;
-        if (updatedDoc && typeof updatedDoc === "object") {
+        const updatedDoc = extractDocument(payload);
+        if (updatedDoc) {
           setDocData(updatedDoc);
           const docVariants = Array.isArray(updatedDoc?.variants)
-            ? (updatedDoc.variants as VariantRecord[])
+            ? updatedDoc.variants
             : [];
           setVariants(docVariants);
         } else {
@@ -817,6 +904,16 @@ const VideoField: FC<FieldProps> = (props) => {
         <span className="text-sm font-semibold text-slate-700">
           {field.label ?? "Video processor"}
         </span>
+        {jobStatus && isActiveJobState(jobStatus.state) ? (
+          <div
+            className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800"
+            role="status"
+          >
+            Processing video, please wait...{" "}
+            {activePresetLabel ? `(${activePresetLabel}) ` : ""}
+            {formatProgress(jobStatus.progress)}
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex flex-col text-xs font-medium text-slate-600">
             Preset
@@ -880,7 +977,18 @@ const VideoField: FC<FieldProps> = (props) => {
                 video={docData.url}
                 crop={cropState}
                 zoom={zoom}
-                aspect={undefined}
+                rotation={0}
+                aspect={4 / 3}
+                minZoom={1}
+                maxZoom={3}
+                cropShape="rect"
+                zoomSpeed={1}
+                restrictPosition
+                mediaProps={{}}
+                cropperProps={{}}
+                style={{}}
+                classes={{}}
+                keyboardStep={1}
                 onCropChange={setCropState}
                 onZoomChange={setZoom}
                 onCropComplete={handleCropComplete}
@@ -903,6 +1011,22 @@ const VideoField: FC<FieldProps> = (props) => {
               className="w-48"
             />
           </label>
+        </div>
+      ) : null}
+
+      {posterUrl ? (
+        <div className="flex flex-col gap-2 text-xs text-slate-600">
+          <span className="font-semibold uppercase tracking-wide text-slate-500">
+            Poster
+          </span>
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            <img
+              src={posterUrl}
+              alt="Video poster"
+              className="h-auto w-full object-contain"
+              loading="lazy"
+            />
+          </div>
         </div>
       ) : null}
 
@@ -987,6 +1111,7 @@ const VideoField: FC<FieldProps> = (props) => {
                         className="w-full bg-black"
                         controls
                         preload="metadata"
+                        poster={posterUrl || undefined}
                         src={url}
                       />
                     </div>

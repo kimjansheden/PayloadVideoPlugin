@@ -14,8 +14,17 @@ export type CropRect = {
 };
 
 export type Preset = {
+  /**
+   * FFmpeg args for the preset, e.g. ["-vf", "scale=-2:720"].
+   */
   args: string[];
+  /**
+   * Optional label shown in the admin UI.
+   */
   label?: string;
+  /**
+   * Enable crop controls for this preset in the admin UI.
+   */
   enableCrop?: boolean;
 };
 
@@ -84,11 +93,51 @@ export type ResolvePathsResult = {
   url: string;
 };
 
-export type VideoPluginOptions = {
-  presets: Record<string, Preset>;
+export type VideoPluginOptions<PresetName extends string = string> = {
+  /**
+   * Video presets keyed by name.
+   */
+  presets: Record<PresetName, Preset>;
+  /**
+   * Queue config for BullMQ.
+   */
   queue?: QueueConfig;
+  /**
+   * Auto-enqueue a preset when a new video is created.
+   * - false/undefined: disabled
+   * - true: use the default preset (1080 -> hd1080 -> first preset)
+   *
+   * @example
+   * autoEnqueue: true
+   */
+  autoEnqueue?: boolean;
+  /**
+   * Optional: override the default preset used when autoEnqueue is true.
+   *
+   * @example
+   * autoEnqueuePreset: "hd1080"
+   */
+  autoEnqueuePreset?: PresetName;
+  /**
+   * Replace the original file after an auto-enqueued job finishes.
+   */
+  autoReplaceOriginal?: boolean;
+  /**
+   * Access control hooks for enqueue/remove/replace operations.
+   */
   access?: AccessControl;
+  /**
+   * Customize file/URL resolution for generated variants.
+   */
   resolvePaths?: (args: ResolvePathsArgs) => ResolvePathsResult;
+};
+
+export type VideoProcessingStatus = {
+  jobId: string;
+  preset: string;
+  state: "queued" | "processing" | "completed" | "failed";
+  progress?: number;
+  updatedAt: string;
 };
 
 export type VideoVariantFieldConfig = {

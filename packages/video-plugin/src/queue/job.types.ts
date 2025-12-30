@@ -16,6 +16,7 @@ export const videoJobSchema = z.object({
   id: z.union([z.string(), z.number()]).transform((value) => value.toString()),
   preset: z.string().min(1),
   crop: cropSchema.optional(),
+  autoReplaceOriginal: z.boolean().optional(),
 });
 
 export type VideoJobData = z.infer<typeof videoJobSchema>;

@@ -1,7 +1,7 @@
 import type { Queue } from "bullmq";
 import { z } from "zod";
 import type { PayloadRequest } from "payload";
-import type { Preset, AccessControl } from "../types";
+import type { Preset, AccessControl, VideoProcessingStatus } from "../types";
 import { videoJobSchema } from "../queue/job.types";
 import { readRequestBody, type RequestWithBody } from "./shared";
 
@@ -58,6 +58,25 @@ export const createEnqueueHandler =
         removeOnComplete: { age: 60 },
         removeOnFail: false,
       });
+
+      const jobId =
+        typeof job.id === "string" || typeof job.id === "number"
+          ? String(job.id)
+          : "";
+      if (jobId) {
+        const status: VideoProcessingStatus = {
+          jobId,
+          preset: parsed.preset,
+          state: "queued",
+          progress: 0,
+          updatedAt: new Date().toISOString(),
+        };
+        await payloadClient.update({
+          collection: parsed.collection,
+          id: parsed.id,
+          data: { videoProcessingStatus: status },
+        });
+      }
 
       return Response.json({ id: job.id, state: "queued" }, { status: 202 });
     } catch (error) {
