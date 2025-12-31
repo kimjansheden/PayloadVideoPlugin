@@ -13,6 +13,20 @@ BullMQ and FFmpeg.
 
 ## Getting started
 
+### Install the plugin (recommended)
+
+Install from npm:
+
+```bash
+pnpm add @kimjansheden/payload-video-processor
+# or: npm i @kimjansheden/payload-video-processor
+```
+
+- Plugin docs: `packages/video-plugin/README.md`
+- npm: https://www.npmjs.com/package/@kimjansheden/payload-video-processor
+
+### Work with this monorepo
+
 Install dependencies with pnpm:
 
 ```bash
@@ -55,17 +69,17 @@ Publishing is automated to avoid manually editing versions:
 - Publish (checks npm latest and bumps interactively when needed):
 
 ```bash
-pnpm -C /Users/kimjansheden/Dropbox/Scriptz/Javascript/React/packages/PayloadVideoPlugin plugin:publish
+pnpm plugin:publish
 ```
 
 - Check-only:
 
 ```bash
-pnpm -C /Users/kimjansheden/Dropbox/Scriptz/Javascript/React/packages/PayloadVideoPlugin plugin:publish:check
+pnpm plugin:publish:check
 ```
 
 - Dry-run:
 
 ```bash
-node /Users/kimjansheden/Dropbox/Scriptz/Javascript/React/packages/PayloadVideoPlugin/scripts/plugin-publish.mjs --dry-run --yes
+node ./scripts/plugin-publish.mjs --dry-run --yes
 ```

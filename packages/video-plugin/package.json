@@ -2,14 +2,15 @@
   "name": "@kimjansheden/payload-video-processor",
   "version": "0.1.16",
   "description": "Queued FFmpeg video variant processing for Payload CMS",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kimjansheden/PayloadVideoPlugin.git"
+    "url": "git+https://github.com/kimjansheden/PayloadVideoPlugin.git"
   },
   "bugs": {
     "url": "https://github.com/kimjansheden/PayloadVideoPlugin/issues"
   },
-  "homepage": "https://github.com/kimjansheden/PayloadVideoPlugin#readme",
+  "homepage": "https://github.com/kimjansheden/PayloadVideoPlugin/tree/main/packages/video-plugin#readme",
   "publishConfig": {
     "access": "public"
   },
