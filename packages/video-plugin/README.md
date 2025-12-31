@@ -1,10 +1,17 @@
 # @kimjansheden/payload-video-processor
 
+[![npm](https://img.shields.io/npm/v/@kimjansheden/payload-video-processor)](https://www.npmjs.com/package/@kimjansheden/payload-video-processor)
+
 Queued FFmpeg-based video variant generation for Payload CMS. The plugin mirrors
 Payload's image size workflow for videos by adding a `variants[]` array to video
 collections and exposing an Admin UI that lets editors enqueue transcoding jobs.
 Designed to be plug-and-play: no custom endpoints, no extra UI code in the
 consumer project.
+
+## Demo videos
+
+- Upload + auto-compression: <https://kimjansheden.se/videos/payload-video-processor/video-plugin-1.mp4>
+- Cropping: <https://kimjansheden.se/videos/payload-video-processor/video-plugin-2-cropping.mp4>
 
 ## Features
 

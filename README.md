@@ -1,8 +1,15 @@
 # Payload Video Processor Monorepo
 
+[![npm](https://img.shields.io/npm/v/@kimjansheden/payload-video-processor)](https://www.npmjs.com/package/@kimjansheden/payload-video-processor)
+
 This workspace contains the `@kimjansheden/payload-video-processor` plugin and a
 reference Payload CMS project that demonstrates queued video processing with
 BullMQ and FFmpeg.
+
+## Demo videos
+
+- Upload + auto-compression: <https://kimjansheden.se/videos/payload-video-processor/video-plugin-1.mp4>
+- Cropping: <https://kimjansheden.se/videos/payload-video-processor/video-plugin-2-cropping.mp4>
 
 ## Packages
 
