@@ -22,8 +22,8 @@ pnpm add @kimjansheden/payload-video-processor
 # or: npm i @kimjansheden/payload-video-processor
 ```
 
-- Plugin docs: `packages/video-plugin/README.md`
-- npm: https://www.npmjs.com/package/@kimjansheden/payload-video-processor
+- Plugin docs: [`packages/video-plugin/README.md`](packages/video-plugin/README.md)
+- npm: <https://www.npmjs.com/package/@kimjansheden/payload-video-processor>
 
 ### Work with this monorepo
 
